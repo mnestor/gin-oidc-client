@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -256,6 +257,11 @@ func (h *OauthHandlers) MiddlewareRequireLogin(loginUrl string) gin.HandlerFunc 
 		})
 		encIDToken, ok := ses.Get(IDTokenKey).(string)
 		if !ok {
+			if loginUrl == "" {
+				c.Abort()
+				_ = c.Error(errors.New(`{"error":"You are not signed in"}`))
+				return
+			}
 			next := base64.RawURLEncoding.EncodeToString([]byte(c.Request.URL.String()))
 			nexturl := loginUrl + "?next=" + next
 			c.Redirect(http.StatusTemporaryRedirect, nexturl)
@@ -266,10 +272,16 @@ func (h *OauthHandlers) MiddlewareRequireLogin(loginUrl string) gin.HandlerFunc 
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed id_token decryption"})
 			c.Error(fmt.Errorf("failed id_token decryption: %w", err))
+			c.Abort()
 			return
 		}
 		idToken, err := h.verifier.Verify(c, string(decIDToken))
 		if err != nil {
+			if loginUrl == "" {
+				c.Abort()
+				_ = c.Error(err)
+				return
+			}
 			next := base64.RawURLEncoding.EncodeToString([]byte(c.Request.URL.String()))
 			nexturl := loginUrl + "?next=" + next
 			c.Redirect(http.StatusTemporaryRedirect, nexturl)
